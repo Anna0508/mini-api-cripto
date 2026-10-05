@@ -1,0 +1,6 @@
+chaves/*
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+!chaves/.gitkeep
