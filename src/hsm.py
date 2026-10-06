@@ -1,4 +1,8 @@
+import os
+from pkcs11.mechanisms import GCMParams
 from contextlib import contextmanager
+from pkcs11 import Attribute, KeyType, ObjectClass
+from pkcs11 import Mechanism
 import pkcs11
 
 CAMINHO_BIBLIOTECA = "/usr/lib/softhsm/libsofthsm2.so"
@@ -21,8 +25,6 @@ def sessao_hsm():
     finally:
         sessao.close()
 
-
-from pkcs11 import Attribute, KeyType, ObjectClass
 
 
 def gerar_par_no_cofre(label: str) -> bytes:
@@ -50,9 +52,6 @@ def gerar_par_no_cofre(label: str) -> bytes:
         return bytes(publica[Attribute.MODULUS])
 
 
-from pkcs11 import Mechanism
-
-
 def assinar_no_cofre(label: str, texto: str) -> bytes:
     """Manda o trabalho para o cofre. A chave não sai de lá."""
     with sessao_hsm() as sessao:
@@ -72,12 +71,6 @@ def verificar_no_cofre(label: str, texto: str, assinatura: bytes) -> bool:
         return publica.verify(
             texto.encode(), assinatura, mechanism=Mechanism.SHA256_RSA_PKCS
         )
-
-
-
-
-import os
-from pkcs11.mechanisms import GCMParams
 
 
 def gerar_chave_aes_no_cofre(label: str) -> None:

@@ -1,4 +1,6 @@
+import os
 from pathlib import Path
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
@@ -67,11 +69,6 @@ def verificar(nome: str, texto: str, assinatura: bytes) -> bool:
         return True
     except InvalidSignature:
         return False
-
-
-import os
-
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 def gerar_chave_aes(nome: str) -> None:
