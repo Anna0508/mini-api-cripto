@@ -3,7 +3,7 @@ import cripto
 from cryptography.exceptions import InvalidTag
 
 def test_cifrar_mesmo_texto_duas_vezes_da_resultado_diferente(tmp_path, monkeypatch):
-    monkeypatch.setattr(cripto, "PASTA_CHAVES", tmp_path )
+    monkeypatch.setattr(cripto, "PASTA_CHAVES", tmp_path)
 
     cripto.gerar_chave_aes("teste")
 
