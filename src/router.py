@@ -47,3 +47,44 @@ def decifrar_texto(dados: DecifrarEntrada):
     cifrado = base64.b64decode(dados.cifrado)
     texto = cripto.decifrar(dados.nome, iv, cifrado)
     return {"texto": texto}
+
+@router.post("/cofre/chaves/rsa")
+def criar_chave_rsa_no_cofre(dados: NomeEntrada):
+    publica = hsm.gerar_par_no_cofre(dados.nome)
+    return {"chave_publica": base64.b64encode(publica).decode()}
+
+
+@router.post("/cofre/assinar")
+def assinar_texto_no_cofre(dados: AssinarEntrada):
+    assinatura = hsm.assinar_no_cofre(dados.nome, dados.texto)
+    return {"assinatura": base64.b64encode(assinatura).decode()}
+
+@router.post("/cofre/verificar")
+def verificar_assinatura_no_cofre(dados: VerificarEntrada):
+    assinatura = base64.b64decode(dados.assinatura)
+    valida = hsm.verificar_no_cofre(dados.nome, dados.texto, assinatura)
+    return {"valida": valida}
+
+@router.post("/cofre/chaves/aes")
+def criar_chave_aes_no_cofre(dados: NomeEntrada):
+    hsm.gerar_chave_aes_no_cofre(dados.nome)
+    return {"mensagem": "chaves AES criadas no cofre"}
+
+@router.post("/cofre/cifrar")
+def cifrar_texto_no_cofre(dados: CifrarEntrada):
+    iv, cifrado = hsm.cifrar_no_cofre(dados.nome, dados.texto)
+    return {
+        "iv": base64.b64encode(iv).decode(),
+        "cifrado": base64.b64encode(cifrado).decode()
+    }
+
+@router.post("/cofre/decifrar")
+def decifrar_texto_no_cofre(dados: DecifrarEntrada):
+    iv = base64.b64decode(dados.iv)
+    cifrado = base64.b64decode(dados.cifrado)
+    texto = hsm.decifrar_no_cofre(dados.nome, iv, cifrado)
+    return {"texto": texto}
+
+@router.get("/cofre/chaves")
+def listar_chaves_no_cofre():
+    return {"chaves": hsm.listar_chaves_cofre()}

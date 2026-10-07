@@ -137,3 +137,7 @@ def listar_chaves() -> list[dict]:
             for objeto in sessao.get_objects({Attribute.CLASS: classe}):
                 chaves.append({"label": objeto.label, "tipo": tipo})
     return chaves
+
+
+                               
+        
