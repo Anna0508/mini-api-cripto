@@ -86,5 +86,6 @@ def decifrar_texto_no_cofre(dados: DecifrarEntrada):
     return {"texto": texto}
 
 @router.get("/cofre/chaves")
-def listar_chaves_no_cofre():
-    return {"chaves": hsm.listar_chaves_cofre()}
+def listar_chaves():
+    
+  return {"chaves": hsm.listar_chaves()}
