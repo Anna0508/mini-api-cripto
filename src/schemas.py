@@ -20,3 +20,10 @@ class DecifrarEntrada(BaseModel):
     nome:str
     iv:str
     cifrado:str
+
+class MonitoramentoSaida(BaseModel):
+    tempo_no_ar:float
+    total_operacoes:int
+    operacoes_por_rota:dict
+    total_de_chaves:int
+    bytes_em_disco:int

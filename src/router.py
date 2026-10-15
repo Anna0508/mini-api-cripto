@@ -1,6 +1,8 @@
 import base64
 from schemas import NomeEntrada, AssinarEntrada, VerificarEntrada, CifrarEntrada, DecifrarEntrada
 from fastapi import APIRouter
+import metricas
+import schemas
 import cripto
 import hsm
 
@@ -89,3 +91,19 @@ def decifrar_texto_no_cofre(dados: DecifrarEntrada):
 def listar_chaves():
     
   return {"chaves": hsm.listar_chaves()}
+
+@router.get("/monitoramento", response_model=schemas.MonitoramentoSaida)
+def monitoramento():
+    tempo = metricas.tempo_no_ar()
+    total_ops = metricas.total_operacoes
+    ops_por_rota = dict(metricas.operacoes_por_rota)
+    total_chaves = metricas.total_de_chaves()
+    bytes_disco = metricas.bytes_em_disco()
+
+    return {
+        "tempo_no_ar": tempo,
+        "total_operacoes": total_ops,
+        "operacoes_por_rota": ops_por_rota,
+        "total_de_chaves": total_chaves,
+        "bytes_em_disco": bytes_disco
+    }
