@@ -13,6 +13,6 @@ def saude():
 
 @app.middleware("http")
 async def add_metrics(request: Request, call_next):
-    response = await call_next(request)
     metricas.registrar_operacao(request.url.path)
+    response = await call_next(request)
     return response

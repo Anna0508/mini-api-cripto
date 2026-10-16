@@ -1,4 +1,5 @@
 import time
+import hsm
 from collections import Counter
 from pathlib import Path
 
@@ -53,3 +54,20 @@ def chaves_por_tipo():
             contagem["aes"] += 1
 
     return contagem
+
+
+def formatar_bytes(tamanho: int) -> str:
+    if tamanho < 1024:
+        return f"{tamanho} B"
+    elif tamanho < 1024 ** 2:
+        return f"{tamanho / 1024:.2f} KB"
+    elif tamanho < 1024 ** 3:
+        return f"{tamanho / (1024 ** 2):.2f} MB"
+    else:
+        return f"{tamanho / (1024 ** 3):.2f} GB"
+def chaves_do_cofre():
+    lista = hsm.listar_chaves()
+    return {
+        "total": len(lista),
+        "por_tipo": dict(Counter(c["tipo"] for c in lista)),
+    }

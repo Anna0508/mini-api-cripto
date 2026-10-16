@@ -99,11 +99,18 @@ def monitoramento():
     ops_por_rota = dict(metricas.operacoes_por_rota)
     total_chaves = metricas.total_de_chaves()
     bytes_disco = metricas.bytes_em_disco()
-
+    chaves_por_tipo = metricas.chaves_por_tipo()
+    bytes_disco_legivel = metricas.formatar_bytes(bytes_disco)
+    tempo_no_ar_legivel = metricas.formatar_tempo(tempo)
+    chaves_do_cofre = metricas.chaves_do_cofre()
     return {
         "tempo_no_ar": tempo,
         "total_operacoes": total_ops,
         "operacoes_por_rota": ops_por_rota,
         "total_de_chaves": total_chaves,
-        "bytes_em_disco": bytes_disco
+        "bytes_em_disco": bytes_disco,
+        "chaves_por_tipo": chaves_por_tipo,
+        "bytes_em_disco_legivel": bytes_disco_legivel,
+        "tempo_no_ar_legivel": tempo_no_ar_legivel,
+        "chaves_do_cofre": chaves_do_cofre
     }
