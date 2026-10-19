@@ -1,9 +1,12 @@
 from fastapi.testclient import TestClient
 import time
 import metricas
+import uuid
+from pathlib import Path
 from main import app
 
 client = TestClient(app)
+TOKENDIR = "/var/lib/softhsm/tokens"
 
 def test_monitoramento_responde_200():
     resposta = client.get("/monitoramento")
@@ -57,3 +60,52 @@ def test_monitoramento_valores_batem_com_metricas():
 
     assert dados["total_de_chaves"] == metricas.total_de_chaves()
     assert dados["bytes_em_disco"] == metricas.bytes_em_disco()
+
+import uuid
+
+def test_gerar_chave_rsa_aumenta_total_de_chaves():
+    nome = f"chave_teste_{uuid.uuid4().hex[:8]}"
+    INCREMENTO_PAR_RSA = 2
+
+    total_antes = metricas.total_de_chaves()
+
+    resp = client.post("/chaves/rsa", json={"nome": nome})
+    assert resp.status_code == 200, resp.text
+
+    assert metricas.total_de_chaves() == total_antes + INCREMENTO_PAR_RSA
+
+
+def test_gerar_chave_rsa_aumenta_bytes_em_disco():
+    nome = f"chave_teste_{uuid.uuid4().hex[:8]}"
+
+    bytes_antes = metricas.bytes_em_disco()
+
+    resp = client.post("/chaves/rsa", json={"nome": nome})
+    assert resp.status_code == 200, resp.text
+
+    assert metricas.bytes_em_disco() > bytes_antes
+
+def test_gerar_chave_rsa_no_cofre_aumenta_bytes_do_token():
+    nome = f"chave_teste_{uuid.uuid4().hex[:8]}"
+
+    antes = metricas.bytes_do_token(TOKENDIR)
+
+    resp = client.post("/cofre/chaves/rsa", json={"nome": nome})
+    assert resp.status_code == 200, resp.text
+
+    depois = metricas.bytes_do_token(TOKENDIR)
+    print(f"par RSA no cofre ocupou {depois - antes} bytes")   # rode com -s
+
+    assert depois > antes
+
+def test_gerar_chave_rsa_em_arquivo_bytes_do_par():
+    nome = f"chave_teste_{uuid.uuid4().hex[:8]}"
+
+    antes = metricas.bytes_em_disco()
+    resp = client.post("/chaves/rsa", json={"nome":nome})
+    assert resp.status_code == 200, resp.text
+    depois = metricas.bytes_em_disco()
+
+    print(f"par RSA em arquivo ocupou {depois - antes} bytes")
+
+    assert depois > antes

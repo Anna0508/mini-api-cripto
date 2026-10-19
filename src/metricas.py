@@ -71,3 +71,7 @@ def chaves_do_cofre():
         "total": len(lista),
         "por_tipo": dict(Counter(c["tipo"] for c in lista)),
     }
+
+def bytes_do_token(tokendir: str) -> int:
+
+    return sum(a.stat().st_size for a in Path(tokendir).rglob("*") if a.is_file()) 
