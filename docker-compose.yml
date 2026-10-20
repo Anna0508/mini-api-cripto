@@ -8,6 +8,7 @@ services:
       - ./tests:/app/tests
       - ./chaves:/app/chaves
       - softhsm-dados:/var/lib/softhsm/tokens
+      - ./painel:/app/painel
 
 volumes:
   softhsm-dados:

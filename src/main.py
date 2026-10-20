@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 import metricas
 
 from router import router
@@ -16,3 +17,5 @@ async def add_metrics(request: Request, call_next):
     metricas.registrar_operacao(request.url.path)
     response = await call_next(request)
     return response
+
+app.mount("/", StaticFiles(directory="painel", html=True), name="painel")
