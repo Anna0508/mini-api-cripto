@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 PASTA_CHAVES = Path("/app/chaves")
 

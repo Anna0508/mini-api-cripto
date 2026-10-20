@@ -1,9 +1,9 @@
 import os
-from pkcs11.mechanisms import GCMParams
 from contextlib import contextmanager
-from pkcs11 import Attribute, KeyType, ObjectClass
-from pkcs11 import Mechanism
+
 import pkcs11
+from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass
+from pkcs11.mechanisms import GCMParams
 
 CAMINHO_BIBLIOTECA = "/usr/lib/softhsm/libsofthsm2.so"
 LABEL_TOKEN = "cofre-treino"
@@ -30,7 +30,7 @@ def sessao_hsm():
 def gerar_par_no_cofre(label: str) -> bytes:
     """Gera um par RSA DENTRO do cofre. A privada nunca sai."""
     with sessao_hsm() as sessao:
-        publica, privada = sessao.generate_keypair(
+        publica, _privada = sessao.generate_keypair(
             KeyType.RSA,
             2048,
             store=True,          # guarda no cofre (não só na sessão)

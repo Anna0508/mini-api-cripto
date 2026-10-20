@@ -1,8 +1,11 @@
 import uuid
+
 import pytest
-import hsm 
-from pkcs11 import Attribute, ObjectClass, Mechanism
-from pkcs11.exceptions import AttributeSensitive
+from pkcs11 import Attribute, ObjectClass
+from pkcs11.exceptions import AttributeSensitive, GeneralError
+
+import hsm
+
 
 @pytest.fixture
 def label_unico():
@@ -40,7 +43,7 @@ def test_texto_alterado_reprova_na_verificacao(label_unico):
     # Alterar um caractere da mensagem cifrada
     cifrado_alterado = bytearray(cifrado)
     cifrado_alterado[0] ^= 0x01 # Inverte o primeiro bit do primeiro byte       
-    with pytest.raises(Exception):
+    with pytest.raises(GeneralError):
         hsm.decifrar_no_cofre(label_unico, iv, bytes(cifrado_alterado))
 
 def test_assinar_e_verificar_pelo_cofre_funciona(label_unico):

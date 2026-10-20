@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-import metricas
 
+import metricas
 from router import router
 
 app = FastAPI(title="Mini API de criptografia")

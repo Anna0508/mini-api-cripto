@@ -1,8 +1,9 @@
-from fastapi.testclient import TestClient
 import time
-import metricas
 import uuid
-from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+import metricas
 from main import app
 
 client = TestClient(app)
@@ -61,7 +62,6 @@ def test_monitoramento_valores_batem_com_metricas():
     assert dados["total_de_chaves"] == metricas.total_de_chaves()
     assert dados["bytes_em_disco"] == metricas.bytes_em_disco()
 
-import uuid
 
 def test_gerar_chave_rsa_aumenta_total_de_chaves():
     nome = f"chave_teste_{uuid.uuid4().hex[:8]}"

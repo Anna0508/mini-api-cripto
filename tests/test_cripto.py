@@ -1,6 +1,8 @@
 import pytest
-import cripto
 from cryptography.exceptions import InvalidTag
+
+import cripto
+
 
 def test_cifrar_mesmo_texto_duas_vezes_da_resultado_diferente(tmp_path, monkeypatch):
     monkeypatch.setattr(cripto, "PASTA_CHAVES", tmp_path)
