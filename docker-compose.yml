@@ -10,5 +10,10 @@ services:
       - softhsm-dados:/var/lib/softhsm/tokens
       - ./painel:/app/painel
 
+    environment:
+      - LIMITE_CHAVES=50
+      - HSM_PIN=5678
+
+
 volumes:
   softhsm-dados:

@@ -6,7 +6,27 @@ async function atualizar() {
     }
     const dados = await resposta.json();
 
-    document.getElementById("chaves").textContent = dados.total_de_chaves;
+    const emUso = dados.chaves_em_uso;
+    const limite = dados.limite_chaves;
+    const chaves = document.getElementById("chaves");
+    const aviso = document.getElementById("aviso-limite");
+
+    chaves.textContent = emUso + " / " + limite;
+
+    if (emUso > limite) {
+      chaves.style.color = "red";
+      chaves.style.fontWeight = "bold";
+      aviso.textContent = "⚠ Limite excedido em " + (emUso - limite) + " chave(s). Novas criações retornam 409.";
+    } else if (emUso === limite) {
+      chaves.style.color = "darkorange";
+      chaves.style.fontWeight = "bold";
+      aviso.textContent = "Limite atingido. Novas criações retornam 409.";
+    } else {
+      chaves.style.color = "";
+      chaves.style.fontWeight = "";
+      aviso.textContent = "";
+    }
+
     document.getElementById("operacoes").textContent = dados.total_operacoes;
     document.getElementById("disco").textContent = dados.bytes_em_disco_legivel;
     document.getElementById("tempo").textContent = dados.tempo_no_ar_legivel;

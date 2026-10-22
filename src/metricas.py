@@ -1,11 +1,13 @@
+import os
 import time
 from collections import Counter
 from pathlib import Path
 
+import cripto
 import hsm
 
+LIMITE_CHAVES = int(os.getenv("LIMITE_CHAVES", "50"))
 INICIO = time.time()
-PASTA_CHAVES = Path("chaves")
 total_operacoes = 0
 operacoes_por_rota = Counter()
 
@@ -32,25 +34,23 @@ def registrar_operacao(rota: str) -> None:
 
 
 def total_de_chaves():
-    arquivos = [a for a in PASTA_CHAVES.iterdir()
+    arquivos = [a for a in cripto.PASTA_CHAVES.iterdir()
                 if a.is_file() and not a.name.startswith(".")]
     return len(arquivos)
 
 def bytes_em_disco():
-    total_bytes = sum(a.stat().st_size for a in PASTA_CHAVES.iterdir()
+    total_bytes = sum(a.stat().st_size for a in cripto.PASTA_CHAVES.iterdir()
                       if a.is_file() and not a.name.startswith("."))
     return total_bytes
 def chaves_por_tipo():
-    contagem = {"rsa_privada": 0, "rsa_publica": 0, "aes": 0}
+    contagem = {"rsa": 0, "aes": 0}
 
-    for a in PASTA_CHAVES.iterdir():
+    for a in cripto.PASTA_CHAVES.iterdir():
         if not a.is_file() or a.name.startswith("."):
             continue
 
         if a.name.endswith("_privada.pem"):
-            contagem["rsa_privada"] += 1
-        elif a.name.endswith("_publica.pem"):
-            contagem["rsa_publica"] += 1
+            contagem["rsa"] += 1
         elif a.name.endswith("_aes.bin"):
             contagem["aes"] += 1
 
@@ -74,5 +74,18 @@ def chaves_do_cofre():
     }
 
 def bytes_do_token(tokendir: str) -> int:
-
     return sum(a.stat().st_size for a in Path(tokendir).rglob("*") if a.is_file()) 
+
+def chaves_em_uso() -> int:
+    cofre = chaves_do_cofre()
+    uso_cofre = cofre["total"] - cofre["por_tipo"].get("RSA pública", 0)
+    uso_local = chaves_locais_logicas()
+    return uso_cofre + uso_local
+
+def limite_atingido() -> bool:
+
+    return chaves_em_uso() >= LIMITE_CHAVES
+
+def chaves_locais_logicas() -> int:
+    por_tipo = chaves_por_tipo()
+    return por_tipo.get("rsa", 0) + por_tipo.get("aes", 0)

@@ -1,6 +1,6 @@
 import base64
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 import cripto
 import hsm
@@ -17,11 +17,26 @@ from schemas import (
 router = APIRouter()
 
 
+def verificar_limite():
+    em_uso = metricas.chaves_em_uso()
+    limite = metricas.LIMITE_CHAVES
+    
+    if em_uso >= limite:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "mensagem": "Criação recusada: limite máximo de chaves atingido",
+                "limite": limite,
+                "em_uso": em_uso,
+            },
+        )
+
+
 @router.get("/cofre/status")
 def cofre_status():
     with hsm.sessao_hsm() as sessao:
         return {"token": sessao.token.label}
-    
+
 @router.post("/assinar")
 def assinar_texto(dados: AssinarEntrada):
     assinatura = cripto.assinar(dados.nome, dados.texto)
@@ -29,17 +44,19 @@ def assinar_texto(dados: AssinarEntrada):
 
 @router.post("/chaves/rsa")
 def criar_chave_rsa(dados: NomeEntrada):
+    verificar_limite()
     publica = cripto.gerar_par_de_chaves(dados.nome)
     return {"chave_publica": publica}
 
 @router.post("/verificar")
 def verificar_assinatura(dados: VerificarEntrada):
-    assinatura = base64.b64decode(dados. assinatura)
+    assinatura = base64.b64decode(dados.assinatura)
     valida = cripto.verificar(dados.nome, dados.texto, assinatura)
     return {"valida": valida}
 
 @router.post("/chaves/aes")
 def criar_chave_aes(dados: NomeEntrada):
+    verificar_limite()
     cripto.gerar_chave_aes(dados.nome)
     return {"mensagem": "chave AES criada"}
 
@@ -60,9 +77,9 @@ def decifrar_texto(dados: DecifrarEntrada):
 
 @router.post("/cofre/chaves/rsa")
 def criar_chave_rsa_no_cofre(dados: NomeEntrada):
+    verificar_limite()
     publica = hsm.gerar_par_no_cofre(dados.nome)
     return {"chave_publica": base64.b64encode(publica).decode()}
-
 
 @router.post("/cofre/assinar")
 def assinar_texto_no_cofre(dados: AssinarEntrada):
@@ -77,6 +94,7 @@ def verificar_assinatura_no_cofre(dados: VerificarEntrada):
 
 @router.post("/cofre/chaves/aes")
 def criar_chave_aes_no_cofre(dados: NomeEntrada):
+    verificar_limite()
     hsm.gerar_chave_aes_no_cofre(dados.nome)
     return {"mensagem": "chaves AES criadas no cofre"}
 
@@ -97,8 +115,7 @@ def decifrar_texto_no_cofre(dados: DecifrarEntrada):
 
 @router.get("/cofre/chaves")
 def listar_chaves():
-    
-  return {"chaves": hsm.listar_chaves()}
+    return {"chaves": hsm.listar_chaves()}
 
 @router.get("/monitoramento", response_model=schemas.MonitoramentoSaida)
 def monitoramento():
@@ -111,6 +128,7 @@ def monitoramento():
     bytes_disco_legivel = metricas.formatar_bytes(bytes_disco)
     tempo_no_ar_legivel = metricas.formatar_tempo(tempo)
     chaves_do_cofre = metricas.chaves_do_cofre()
+
     return {
         "tempo_no_ar": tempo,
         "total_operacoes": total_ops,
@@ -120,5 +138,8 @@ def monitoramento():
         "chaves_por_tipo": chaves_por_tipo,
         "bytes_em_disco_legivel": bytes_disco_legivel,
         "tempo_no_ar_legivel": tempo_no_ar_legivel,
-        "chaves_do_cofre": chaves_do_cofre
+        "chaves_do_cofre": chaves_do_cofre,
+        "limite_chaves": metricas.LIMITE_CHAVES,
+        "chaves_em_uso": metricas.chaves_em_uso()
+
     }
