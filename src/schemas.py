@@ -31,6 +31,8 @@ class MonitoramentoSaida(BaseModel):
     chaves_por_tipo:dict
     bytes_em_disco_legivel:str
     tempo_no_ar_legivel:str
-    chaves_do_cofre:dict
     limite_chaves: int
-    chaves_em_uso: int
+    chaves_do_cofre: dict | None = None
+    chaves_em_uso: int | None = None
+    cofre_disponivel: bool
+    

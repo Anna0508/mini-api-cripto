@@ -1,6 +1,7 @@
 import base64
 
 from fastapi import APIRouter, HTTPException
+from pkcs11.exceptions import NoSuchKey, NoSuchToken
 
 import cripto
 import hsm
@@ -83,8 +84,13 @@ def criar_chave_rsa_no_cofre(dados: NomeEntrada):
 
 @router.post("/cofre/assinar")
 def assinar_texto_no_cofre(dados: AssinarEntrada):
-    assinatura = hsm.assinar_no_cofre(dados.nome, dados.texto)
-    return {"assinatura": base64.b64encode(assinatura).decode()}
+    try:
+        assinatura = hsm.assinar_no_cofre(dados.nome, dados.texto)
+    except NoSuchKey:
+        raise HTTPException(
+        status_code=404,
+        detail=f"Chave '{dados.nome}' não encontrada no cofre.",
+    )
 
 @router.post("/cofre/verificar")
 def verificar_assinatura_no_cofre(dados: VerificarEntrada):
@@ -127,7 +133,14 @@ def monitoramento():
     chaves_por_tipo = metricas.chaves_por_tipo()
     bytes_disco_legivel = metricas.formatar_bytes(bytes_disco)
     tempo_no_ar_legivel = metricas.formatar_tempo(tempo)
-    chaves_do_cofre = metricas.chaves_do_cofre()
+    try:
+        chaves_do_cofre = metricas.chaves_do_cofre()
+        chaves_em_uso = metricas.chaves_em_uso()
+        cofre_disponivel = True
+    except NoSuchToken:
+        chaves_do_cofre = None
+        chaves_em_uso = None
+        cofre_disponivel = False
 
     return {
         "tempo_no_ar": tempo,
@@ -140,6 +153,7 @@ def monitoramento():
         "tempo_no_ar_legivel": tempo_no_ar_legivel,
         "chaves_do_cofre": chaves_do_cofre,
         "limite_chaves": metricas.LIMITE_CHAVES,
-        "chaves_em_uso": metricas.chaves_em_uso()
+        "chaves_em_uso": chaves_em_uso,
+        "cofre_disponivel": cofre_disponivel,
 
     }

@@ -1,13 +1,15 @@
 import time
 import uuid
-
+import os
+import pytest
+from pathlib import Path
 from fastapi.testclient import TestClient
 
 import metricas
 from main import app
 
 client = TestClient(app)
-TOKENDIR = "/var/lib/softhsm/tokens"
+TOKENDIR = os.getenv("TOKENDIR", "/var/lib/softhsm/tokens")
 
 def test_monitoramento_responde_200():
     resposta = client.get("/monitoramento")
@@ -84,6 +86,11 @@ def test_gerar_chave_rsa_aumenta_bytes_em_disco(ambiente):
     assert resp.status_code == 200, resp.text
 
     assert metricas.bytes_em_disco() > bytes_antes
+
+@pytest.mark.skipif(
+    not Path(TOKENDIR).exists(),
+    reason="Pasta do cofre (TOKENDIR) não existe nesta máquina.",
+)
 
 def test_gerar_chave_rsa_no_cofre_aumenta_bytes_do_token(limite_alto):
     nome = f"chave_teste_{uuid.uuid4().hex[:8]}"

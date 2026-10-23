@@ -8,7 +8,11 @@ from pkcs11.mechanisms import GCMParams
 CAMINHO_BIBLIOTECA = "/usr/lib/softhsm/libsofthsm2.so"
 LABEL_TOKEN = "cofre-treino"
 PIN = os.getenv("HSM_PIN")
-
+if not PIN:
+    raise RuntimeError(
+        "Variável de ambiente HSM_PIN não definida. "
+        "Defina o PIN do cofre (ex.: no docker-compose.yml) antes de iniciar a API."
+    )
 
 @contextmanager
 def sessao_hsm():
