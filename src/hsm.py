@@ -1,12 +1,14 @@
 import os
 from contextlib import contextmanager
 
+import threading
 import pkcs11
 from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass
 from pkcs11.mechanisms import GCMParams
 
 CAMINHO_BIBLIOTECA = "/usr/lib/softhsm/libsofthsm2.so"
 LABEL_TOKEN = "cofre-treino"
+FILA_HSM = threading.RLock()
 PIN = os.getenv("HSM_PIN")
 if not PIN:
     raise RuntimeError(
@@ -16,16 +18,15 @@ if not PIN:
 
 @contextmanager
 def sessao_hsm():
+    with FILA_HSM:
+        lib = pkcs11.lib(CAMINHO_BIBLIOTECA)
+        token = lib.get_token(token_label=LABEL_TOKEN)
 
-    lib = pkcs11.lib(CAMINHO_BIBLIOTECA)
-    token = lib.get_token(token_label=LABEL_TOKEN)
-
-    sessao = token.open(user_pin=PIN, rw=True)
-    try:
-        yield sessao
-    finally:
-        sessao.close()
-
+        sessao = token.open(user_pin=PIN, rw=True)
+        try:
+            yield sessao
+        finally:
+            sessao.close()
 
 
 def gerar_par_no_cofre(label: str) -> bytes:

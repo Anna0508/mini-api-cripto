@@ -1,4 +1,5 @@
 import base64
+import threading
 
 from fastapi import APIRouter, HTTPException
 from pkcs11.exceptions import NoSuchKey, NoSuchToken
@@ -16,6 +17,8 @@ from schemas import (
 )
 
 router = APIRouter()
+
+TRAVA_CRIACAO = threading.Lock()
 
 
 def verificar_limite():
@@ -45,8 +48,9 @@ def assinar_texto(dados: AssinarEntrada):
 
 @router.post("/chaves/rsa")
 def criar_chave_rsa(dados: NomeEntrada):
-    verificar_limite()
-    publica = cripto.gerar_par_de_chaves(dados.nome)
+    with TRAVA_CRIACAO:
+        verificar_limite()
+        publica = cripto.gerar_par_de_chaves(dados.nome)
     return {"chave_publica": publica}
 
 @router.post("/verificar")
@@ -57,8 +61,9 @@ def verificar_assinatura(dados: VerificarEntrada):
 
 @router.post("/chaves/aes")
 def criar_chave_aes(dados: NomeEntrada):
-    verificar_limite()
-    cripto.gerar_chave_aes(dados.nome)
+    with TRAVA_CRIACAO:
+        verificar_limite()
+        cripto.gerar_chave_aes(dados.nome)
     return {"mensagem": "chave AES criada"}
 
 @router.post("/cifrar")
@@ -78,8 +83,9 @@ def decifrar_texto(dados: DecifrarEntrada):
 
 @router.post("/cofre/chaves/rsa")
 def criar_chave_rsa_no_cofre(dados: NomeEntrada):
-    verificar_limite()
-    publica = hsm.gerar_par_no_cofre(dados.nome)
+    with TRAVA_CRIACAO:
+        verificar_limite()
+        publica = hsm.gerar_par_no_cofre(dados.nome)
     return {"chave_publica": base64.b64encode(publica).decode()}
 
 @router.post("/cofre/assinar")
@@ -100,8 +106,9 @@ def verificar_assinatura_no_cofre(dados: VerificarEntrada):
 
 @router.post("/cofre/chaves/aes")
 def criar_chave_aes_no_cofre(dados: NomeEntrada):
-    verificar_limite()
-    hsm.gerar_chave_aes_no_cofre(dados.nome)
+    with TRAVA_CRIACAO:
+        verificar_limite()
+        hsm.gerar_chave_aes_no_cofre(dados.nome)
     return {"mensagem": "chaves AES criadas no cofre"}
 
 @router.post("/cofre/cifrar")
