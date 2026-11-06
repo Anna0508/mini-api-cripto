@@ -17,3 +17,11 @@ def ambiente(tmp_path, monkeypatch):
 @pytest.fixture
 def limite_alto(monkeypatch):
     monkeypatch.setattr(metricas, "LIMITE_CHAVES", 10_000)
+
+@pytest.fixture(autouse=True)
+def auditoria_isolada(tmp_path, monkeypatch):
+    import auditoria
+
+    pasta = tmp_path / "auditoria"
+    pasta.mkdir()
+    monkeypatch.setattr(auditoria, "caminho", lambda: pasta / ".auditoria.jsonl")
