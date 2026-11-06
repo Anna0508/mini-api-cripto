@@ -23,3 +23,14 @@ def test_pedidos_simultaneos(ambiente, monkeypatch):
 
     assert sucesso == 5
     assert falha == 5
+
+def test_limite_de_chaves(ambiente, monkeypatch):
+    monkeypatch.setattr(metricas, "LIMITE_CHAVES", 3)
+    # Cria 3 chaves com sucesso
+    for i in range(3):
+        response = client.post("/chaves/rsa", json={"nome": f"teste{i}"})
+        assert response.status_code == 200
+
+    # Tenta criar uma quarta chave e espera falha
+    response = client.post("/chaves/rsa", json={"nome": "teste3"})
+    assert response.status_code == 409
