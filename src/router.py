@@ -1,5 +1,4 @@
 import base64
-import threading
 
 from fastapi import APIRouter, HTTPException
 from pkcs11.exceptions import NoSuchKey, NoSuchToken
@@ -16,9 +15,10 @@ from schemas import (
     NomeEntrada,
     VerificarEntrada,
 )
+from trava import TravaDeArquivo
 
 router = APIRouter()
-TRAVA_CRIACAO = threading.Lock()
+TRAVA_CRIACAO = TravaDeArquivo("criacao")
 
 
 def verificar_limite():

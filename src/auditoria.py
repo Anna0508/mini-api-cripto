@@ -1,6 +1,6 @@
 import hashlib
 import json
-import threading
+from trava import TravaDeArquivo
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -8,7 +8,7 @@ import cripto
 
 AUTOR = "sistema"
 HASH_INICIAL = "0" * 64
-TRAVA_AUDITORIA = threading.Lock()
+TRAVA_AUDITORIA = TravaDeArquivo("auditoria")
 
 
 def caminho():

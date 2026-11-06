@@ -1,7 +1,9 @@
+import multiprocessing
 import threading
 import time
 
 import hsm
+from trava import TravaDeArquivo
 
 class SessaoFalsa:
     def close(self):
@@ -40,3 +42,32 @@ def test_so_um_acesso_ao_hsm_por_vez(monkeypatch):
         thread.join()
 
     assert maximo == 1, "Houve acesso simultaneo ao HSM"
+
+def somar(arquivo, nome_trava, vezes):
+    trava = TravaDeArquivo(nome_trava)
+    for _ in range(vezes):
+        with trava:
+            valor = int(open(arquivo).read())
+            time.sleep(0.001)
+            open(arquivo, "w").write(str(valor + 1))
+
+
+def test_dois_processos_nao_se_atropelam(tmp_path):
+    arquivo = tmp_path / "contador.txt"
+    arquivo.write_text("0")
+    processos = [
+        multiprocessing.Process(target=somar, args=(str(arquivo), "teste-trava", 20))
+        for _ in range(2)
+    ]
+    for p in processos:
+        p.start()
+    for p in processos:
+        p.join()
+    assert int(arquivo.read_text()) == 40
+
+
+def test_a_mesma_thread_pode_entrar_duas_vezes():
+    trava = TravaDeArquivo("teste-reentrada")
+    with trava:
+        with trava:
+            pass

@@ -1,14 +1,14 @@
 import os
 from contextlib import contextmanager
 
-import threading
 import pkcs11
 from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass
 from pkcs11.mechanisms import GCMParams
+from trava import TravaDeArquivo
 
 CAMINHO_BIBLIOTECA = "/usr/lib/softhsm/libsofthsm2.so"
 LABEL_TOKEN = "cofre-treino"
-FILA_HSM = threading.RLock()
+FILA_HSM = TravaDeArquivo("hsm")
 PIN = os.getenv("HSM_PIN")
 if not PIN:
     raise RuntimeError(
