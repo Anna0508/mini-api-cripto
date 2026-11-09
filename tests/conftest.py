@@ -25,3 +25,12 @@ def auditoria_isolada(tmp_path, monkeypatch):
     pasta = tmp_path / "auditoria"
     pasta.mkdir()
     monkeypatch.setattr(auditoria, "caminho", lambda: pasta / ".auditoria.jsonl")
+
+@pytest.fixture(autouse=True)
+def sessao_hsm_limpa():
+    import hsm
+
+    hsm.fechar_sessao()
+    yield
+    hsm.fechar_sessao()
+    

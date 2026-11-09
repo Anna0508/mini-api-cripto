@@ -16,17 +16,32 @@ if not PIN:
         "Defina o PIN do cofre (ex.: no docker-compose.yml) antes de iniciar a API."
     )
 
+_sessao = None
+
+
+def fechar_sessao():
+    global _sessao
+    if _sessao is not None:
+        try:
+            _sessao.close()
+        except Exception:
+            pass
+        _sessao = None
+
+
 @contextmanager
 def sessao_hsm():
+    global _sessao
     with FILA_HSM:
-        lib = pkcs11.lib(CAMINHO_BIBLIOTECA)
-        token = lib.get_token(token_label=LABEL_TOKEN)
-
-        sessao = token.open(user_pin=PIN, rw=True)
+        if _sessao is None:
+            lib = pkcs11.lib(CAMINHO_BIBLIOTECA)
+            token = lib.get_token(token_label=LABEL_TOKEN)
+            _sessao = token.open(user_pin=PIN, rw=True)
         try:
-            yield sessao
-        finally:
-            sessao.close()
+            yield _sessao
+        except BaseException:
+            fechar_sessao()
+            raise
 
 
 def gerar_par_no_cofre(label: str) -> bytes:

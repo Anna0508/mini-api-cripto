@@ -71,3 +71,40 @@ def test_a_mesma_thread_pode_entrar_duas_vezes():
     with trava:
         with trava:
             pass
+
+def preparar_contagem(monkeypatch):
+    aberturas =[]
+
+    class SessaoContada:
+        def close(self):
+            pass
+
+    class Tokencontado:
+        def open(self, **kwargs):
+            aberturas.append(1)
+            return SessaoContada()
+
+    class BibliotecaContada:
+        def get_token(self, **kwargs):
+            return Tokencontado()
+
+    monkeypatch.setattr(hsm.pkcs11, "lib", lambda caminho: BibliotecaContada())
+    return aberturas
+
+def test_sessao_e_reaproveitada(monkeypatch):
+    aberturas = preparar_contagem(monkeypatch)
+    for _ in range(5):
+        with hsm.sessao_hsm():
+            pass
+    assert len(aberturas) == 1, "Sessão não foi reaproveitada"
+
+def test_sessao_e_reaberta_depois_de_erro(monkeypatch):
+    aberturas = preparar_contagem(monkeypatch)
+    try:
+        with hsm.sessao_hsm():
+            raise RuntimeError("Erro proposital")
+    except RuntimeError:
+        pass
+    with hsm.sessao_hsm():
+        pass
+    assert len(aberturas) == 2, "Sessão não foi reaberta depois de erro"
