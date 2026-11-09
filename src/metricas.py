@@ -43,7 +43,22 @@ def bytes_em_disco():
                       if a.is_file() and not a.name.startswith("."))
     return total_bytes
 def chaves_por_tipo():
-    contagem = {"rsa": 0, "aes": 0}
+    contagem = {"rsa": 0, "aes": 0, "chacha": 0, "ed25519": 0}
+
+    for a in cripto.PASTA_CHAVES.iterdir():
+        if not a.is_file() or a.name.startswith("."):
+            continue
+
+        if a.name.endswith("_ed25519_privada.pem"):
+            contagem["ed25519"] += 1
+        elif a.name.endswith("_privada.pem"):
+            contagem["rsa"] += 1
+        elif a.name.endswith("_aes.bin"):
+            contagem["aes"] += 1
+        elif a.name.endswith("_chacha.bin"):
+            contagem["chacha"] += 1
+
+    return contagem
 
     for a in cripto.PASTA_CHAVES.iterdir():
         if not a.is_file() or a.name.startswith("."):
@@ -53,6 +68,8 @@ def chaves_por_tipo():
             contagem["rsa"] += 1
         elif a.name.endswith("_aes.bin"):
             contagem["aes"] += 1
+        elif a.name.endswith("_chacha.bin"):
+            contagem["chacha"] += 1
 
     return contagem
 
@@ -78,7 +95,10 @@ def bytes_do_token(tokendir: str) -> int:
 
 def chaves_em_uso() -> int:
     cofre = chaves_do_cofre()
-    uso_cofre = cofre["total"] - cofre["por_tipo"].get("RSA pública", 0)
+    publicas = sum(
+        n for tipo, n in cofre["por_tipo"].items() if tipo.endswith("pública")
+    )
+    uso_cofre = cofre["total"] - publicas
     uso_local = chaves_locais_logicas()
     return uso_cofre + uso_local
 
@@ -87,5 +107,4 @@ def limite_atingido() -> bool:
     return chaves_em_uso() >= LIMITE_CHAVES
 
 def chaves_locais_logicas() -> int:
-    por_tipo = chaves_por_tipo()
-    return por_tipo.get("rsa", 0) + por_tipo.get("aes", 0)
+    return sum(chaves_por_tipo().values())

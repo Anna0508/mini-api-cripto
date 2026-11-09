@@ -1,5 +1,7 @@
 import base64
+import binascii
 
+from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, HTTPException
 from pkcs11.exceptions import NoSuchKey, NoSuchToken
 
@@ -10,10 +12,15 @@ import metricas
 import schemas
 from schemas import (
     AssinarEntrada,
+    AssinarSeguroEntrada,
     CifrarEntrada,
+    CifrarSeguroEntrada,
     DecifrarEntrada,
+    DecifrarSeguroEntrada,
     NomeEntrada,
+    NomeSeguroEntrada,
     VerificarEntrada,
+    VerificarSeguroEntrada,
 )
 from trava import TravaDeArquivo
 
@@ -36,6 +43,24 @@ def verificar_limite():
         )
 
 
+def _decodificar_base64(valor: str, campo: str) -> bytes:
+    try:
+        return base64.b64decode(valor, validate=True)
+    except binascii.Error:
+        raise HTTPException(
+            status_code=422, detail=f"O campo '{campo}' não é base64 válido."
+        ) from None
+
+
+def _chave_nao_encontrada(nome: str) -> HTTPException:
+    return HTTPException(status_code=404, detail=f"Chave '{nome}' não encontrada.")
+
+
+def _chave_ja_existe(nome: str) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail=f"Já existe uma chave com o nome '{nome}'. Escolha outro nome.",
+    )
 @router.get("/cofre/status")
 def cofre_status():
     with hsm.sessao_hsm() as sessao:
@@ -151,7 +176,112 @@ def decifrar_texto_no_cofre(dados: DecifrarEntrada):
         texto = hsm.decifrar_no_cofre(dados.nome, iv, cifrado)
     return {"texto": texto}
 
+@router.post("/chaves/chacha")
+def criar_chave_chacha(dados: NomeSeguroEntrada):
+    with auditoria.auditar("criar_chave_chacha", dados.nome):
+        with TRAVA_CRIACAO:
+            verificar_limite()
+            try:
+                cripto.gerar_chave_chacha(dados.nome)
+            except FileExistsError:
+                raise _chave_ja_existe(dados.nome) from None
+    return {"mensagem": "chave ChaCha20-Poly1305 criada"}
 
+
+@router.post("/cifrar/chacha")
+def cifrar_texto_chacha(dados: CifrarSeguroEntrada):
+    with auditoria.auditar("cifrar_chacha", dados.nome):
+        try:
+            nonce, cifrado = cripto.cifrar_chacha(dados.nome, dados.texto)
+        except FileNotFoundError:
+            raise _chave_nao_encontrada(dados.nome) from None
+    return {
+        "iv": base64.b64encode(nonce).decode(),
+        "cifrado": base64.b64encode(cifrado).decode(),
+    }
+
+
+@router.post("/decifrar/chacha")
+def decifrar_texto_chacha(dados: DecifrarSeguroEntrada):
+    nonce = _decodificar_base64(dados.iv, "iv")
+    cifrado = _decodificar_base64(dados.cifrado, "cifrado")
+    with auditoria.auditar("decifrar_chacha", dados.nome):
+        try:
+            texto = cripto.decifrar_chacha(dados.nome, nonce, cifrado)
+        except FileNotFoundError:
+            raise _chave_nao_encontrada(dados.nome) from None
+        except (InvalidTag, ValueError):
+            raise HTTPException(
+                status_code=400,
+                detail="Não foi possível decifrar: nonce, texto cifrado ou chave não conferem.",
+            ) from None
+    return {"texto": texto}
+
+@router.post("/chaves/ed25519")
+def criar_chave_ed25519(dados: NomeSeguroEntrada):
+    with auditoria.auditar("criar_chave_ed25519", dados.nome):
+        with TRAVA_CRIACAO:
+            verificar_limite()
+            try:
+                publica = cripto.gerar_par_ed25519(dados.nome)
+            except FileExistsError:
+                raise _chave_ja_existe(dados.nome) from None
+    return {"chave_publica": publica}
+
+
+@router.post("/assinar/ed25519")
+def assinar_texto_ed25519(dados: AssinarSeguroEntrada):
+    with auditoria.auditar("assinar_ed25519", dados.nome):
+        try:
+            assinatura = cripto.assinar_ed25519(dados.nome, dados.texto)
+        except FileNotFoundError:
+            raise _chave_nao_encontrada(dados.nome) from None
+    return {"assinatura": base64.b64encode(assinatura).decode()}
+
+
+@router.post("/verificar/ed25519")
+def verificar_assinatura_ed25519(dados: VerificarSeguroEntrada):
+    assinatura = _decodificar_base64(dados.assinatura, "assinatura")
+    with auditoria.auditar("verificar_ed25519", dados.nome):
+        try:
+            valida = cripto.verificar_ed25519(dados.nome, dados.texto, assinatura)
+        except FileNotFoundError:
+            raise _chave_nao_encontrada(dados.nome) from None
+    return {"valida": valida}
+
+@router.post("/cofre/chaves/ec")
+def criar_chave_ec_no_cofre(dados: NomeSeguroEntrada):
+    with auditoria.auditar("cofre_criar_chave_ec", dados.nome):
+        with TRAVA_CRIACAO:
+            verificar_limite()
+            try:
+                publica = hsm.gerar_par_ec_no_cofre(dados.nome)
+            except hsm.ChaveJaExiste:
+                raise _chave_ja_existe(dados.nome) from None
+    return {"chave_publica": base64.b64encode(publica).decode()}
+
+
+@router.post("/cofre/assinar/ec")
+def assinar_texto_ec_no_cofre(dados: AssinarSeguroEntrada):
+    with auditoria.auditar("cofre_assinar_ec", dados.nome):
+        try:
+            assinatura = hsm.assinar_ec_no_cofre(dados.nome, dados.texto)
+        except NoSuchKey:
+            raise _chave_nao_encontrada(dados.nome) from None
+    return {"assinatura": base64.b64encode(assinatura).decode()}
+
+
+@router.post("/cofre/verificar/ec")
+def verificar_assinatura_ec_no_cofre(dados: VerificarSeguroEntrada):
+    assinatura = _decodificar_base64(dados.assinatura, "assinatura")
+    with auditoria.auditar("cofre_verificar_ec", dados.nome):
+        try:
+            valida = hsm.verificar_ec_no_cofre(dados.nome, dados.texto, assinatura)
+        except NoSuchKey:
+            raise _chave_nao_encontrada(dados.nome) from None
+    return {"valida": valida}
+
+    
 @router.get("/cofre/chaves")
 def listar_chaves():
     return {"chaves": hsm.listar_chaves()}
