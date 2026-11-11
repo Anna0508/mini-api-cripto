@@ -13,6 +13,7 @@ services:
     environment:
       - LIMITE_CHAVES=50
       - HSM_PIN=5678
+      - ALERTA_URL=http://127.0.0.1:9000/alerta
 
 
 volumes:

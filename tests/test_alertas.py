@@ -1,10 +1,16 @@
 import json
+import threading
+import time
 
 import pytest
+from fastapi.testclient import TestClient
 
 import alertas
 import auditoria
 import metricas
+from main import app
+
+client = TestClient(app)
 
 
 @pytest.fixture
@@ -179,3 +185,44 @@ def test_o_log_do_alerta_nao_guarda_o_endereco_do_destino(ambiente, monkeypatch)
 
     assert "segredo" not in auditoria.caminho().read_text()
     assert "token123" not in auditoria.caminho().read_text()
+
+def test_destino_fora_do_ar_nao_derruba_a_criacao_de_chave(ambiente, limite_alto, monkeypatch):
+    def destino_fora(alerta):
+        raise ConnectionRefusedError("destino desligado")
+
+    monkeypatch.setattr(alertas, "ALERTA_URL", "http://teste")
+    monkeypatch.setattr(alertas, "enviar_http", destino_fora)
+    monkeypatch.setattr(metricas, "LIMITE_CHAVES", 2)
+
+    r1 = client.post("/chaves/aes", json={"nome": "a1"})   # 50%: alerta de atenção, que vai falhar
+    r2 = client.post("/chaves/aes", json={"nome": "a2"})   # 100%: alerta crítico, que vai falhar
+    alertas.esperar_envios()
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    registros = operacoes_do_log()
+    falhas = [r for r in registros if r["operacao"] == "alerta_falhou"]
+    assert len(falhas) == 2
+    assert all(f["sucesso"] is False for f in falhas)
+    assert all(f["erro"] == "ConnectionRefusedError" for f in falhas)
+    assert all(f"tentativas={alertas.TENTATIVAS}" in f["recurso"] for f in falhas)
+    # as chaves foram criadas mesmo assim
+    assert len(list(ambiente.glob("*_aes.bin"))) == 2
+    assert auditoria.verificar_cadeia() == (True, None)
+
+
+def test_destino_lento_nao_segura_a_resposta(ambiente, limite_alto, monkeypatch):
+    liberar = threading.Event()
+    monkeypatch.setattr(alertas, "ALERTA_URL", "http://teste")
+    monkeypatch.setattr(alertas, "enviar_http", lambda alerta: liberar.wait(10))
+    monkeypatch.setattr(metricas, "LIMITE_CHAVES", 2)
+
+    client.post("/chaves/aes", json={"nome": "a1"})
+    inicio = time.perf_counter()
+    resposta = client.post("/chaves/aes", json={"nome": "a2"})
+    demorou = time.perf_counter() - inicio
+    liberar.set()
+    alertas.esperar_envios()
+
+    assert resposta.status_code == 200
+    assert demorou < 2

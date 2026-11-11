@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pkcs11.exceptions import NoSuchKey, NoSuchToken
 
+import alertas
 import auditoria
 import cripto
 import hsm
@@ -82,6 +83,7 @@ def criar_chave_rsa(dados: NomeEntrada):
         with TRAVA_CRIACAO:
             verificar_limite()
             publica = cripto.gerar_par_de_chaves(dados.nome)
+            alertas.verificar()
     return {"chave_publica": publica}
 
 @router.post("/verificar")
@@ -97,6 +99,7 @@ def criar_chave_aes(dados: NomeEntrada):
         with TRAVA_CRIACAO:
             verificar_limite()
             cripto.gerar_chave_aes(dados.nome)
+            alertas.verificar()
     return {"mensagem": "chave AES criada"}
 
 @router.post("/cifrar")
@@ -122,6 +125,7 @@ def criar_chave_rsa_no_cofre(dados: NomeEntrada):
         with TRAVA_CRIACAO:
             verificar_limite()
             publica = hsm.gerar_par_no_cofre(dados.nome)
+            alertas.verificar()
     return {"chave_publica": base64.b64encode(publica).decode()}
 
 @router.post("/cofre/assinar")
@@ -149,6 +153,7 @@ def criar_chave_aes_no_cofre(dados: NomeEntrada):
         with TRAVA_CRIACAO:
             verificar_limite()
             hsm.gerar_chave_aes_no_cofre(dados.nome)
+            alertas.verificar()
     return {"mensagem": "chaves AES criadas no cofre"}
 
 @router.post("/cofre/cifrar")
@@ -177,6 +182,7 @@ def criar_chave_chacha(dados: NomeSeguroEntrada):
                 cripto.gerar_chave_chacha(dados.nome)
             except FileExistsError:
                 raise _chave_ja_existe(dados.nome) from None
+            alertas.verificar()
     return {"mensagem": "chave ChaCha20-Poly1305 criada"}
 
 
@@ -219,6 +225,7 @@ def criar_chave_ed25519(dados: NomeSeguroEntrada):
                 publica = cripto.gerar_par_ed25519(dados.nome)
             except FileExistsError:
                 raise _chave_ja_existe(dados.nome) from None
+            alertas.verificar()
     return {"chave_publica": publica}
 
 
@@ -252,6 +259,7 @@ def criar_chave_ec_no_cofre(dados: NomeSeguroEntrada):
                 publica = hsm.gerar_par_ec_no_cofre(dados.nome)
             except hsm.ChaveJaExiste:
                 raise _chave_ja_existe(dados.nome) from None
+            alertas.verificar()
     return {"chave_publica": base64.b64encode(publica).decode()}
 
 

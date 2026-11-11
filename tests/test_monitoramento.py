@@ -5,8 +5,10 @@ import pytest
 from pathlib import Path
 from fastapi.testclient import TestClient
 
+import hsm
 import metricas
 from main import app
+from pkcs11 import Attribute
 
 client = TestClient(app)
 TOKENDIR = os.getenv("TOKENDIR", "/var/lib/softhsm/tokens")
@@ -97,13 +99,19 @@ def test_gerar_chave_rsa_no_cofre_aumenta_bytes_do_token(limite_alto):
 
     antes = metricas.bytes_do_token(TOKENDIR)
 
-    resp = client.post("/cofre/chaves/rsa", json={"nome": nome})
-    assert resp.status_code == 200, resp.text
+    try:
+        resp = client.post("/cofre/chaves/rsa", json={"nome": nome})
+        assert resp.status_code == 200, resp.text
 
-    depois = metricas.bytes_do_token(TOKENDIR)
-    print(f"par RSA no cofre ocupou {depois - antes} bytes")   # rode com -s
+        depois = metricas.bytes_do_token(TOKENDIR)
+        print(f"par RSA no cofre ocupou {depois - antes} bytes")   # rode com -s
 
-    assert depois > antes
+        assert depois > antes
+    finally:
+        # apaga a chave de teste, senão cada rodada do pytest enche um pouco o cofre
+        with hsm.sessao_hsm() as sessao:
+            for objeto in sessao.get_objects({Attribute.LABEL: nome}):
+                objeto.destroy()
 
 def test_gerar_chave_rsa_em_arquivo_bytes_do_par(ambiente):
     nome = f"chave_teste_{uuid.uuid4().hex[:8]}"

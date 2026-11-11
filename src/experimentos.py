@@ -1,10 +1,16 @@
 import collections
+import hashlib
+import json
 import os
+import resource
+import shutil
 import statistics
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+from pathlib import Path
 
 import httpx
 
@@ -14,6 +20,7 @@ import hsm
 import metricas
 import pkcs11
 from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 LABEL = "medicao-hsm"
 OPERACOES = 30
@@ -28,6 +35,9 @@ TOKENS_TESTE = ["teste-seg-1", "teste-seg-2"]
 RODADAS_SEG = 20
 OPERACOES_SEG = 40
 TEMPO_MAXIMO = 60
+TAMANHOS_LOG = [50_000, 150_000, 300_000]
+OPERACOES_LOG = ["criar_chave", "assinar", "verificar", "cifrar"]
+PORTA_RECEPTOR = 9000
 
 
 def assinar_varias(vezes):
@@ -232,18 +242,152 @@ def experimento_cofres():
         apagar_tokens_teste()
 
 
+def gerar_log_grande(caminho, linhas):
+    """Cria um log de auditoria falso, mas com a cadeia de hash válida."""
+    anterior = auditoria.HASH_INICIAL
+    with open(caminho, "w") as f:
+        for i in range(linhas):
+            registro = {
+                "quando": f"2026-11-{1 + i % 9:02d}T12:00:00+00:00",
+                "autor": auditoria.AUTOR,
+                "operacao": OPERACOES_LOG[i % 4],
+                "recurso": f"chave{i}",
+                "sucesso": True,
+                "erro": None,
+                "hash_anterior": anterior,
+            }
+            registro["hash"] = auditoria.calcular_hash(
+                {k: v for k, v in registro.items() if k != "hash_anterior"}, anterior
+            )
+            anterior = registro["hash"]
+            f.write(json.dumps(registro, ensure_ascii=False) + "\n")
+
+
+def exportar_tudo_na_memoria(destino, operacao):
+    """O jeito ingênuo: carrega o log inteiro, monta o CSV inteiro e só então grava."""
+    registros = [
+        json.loads(linha) for linha in auditoria.caminho().read_text().splitlines()
+    ]
+    anterior = auditoria.HASH_INICIAL
+    for r in registros:
+        esperado = auditoria.calcular_hash(
+            {k: v for k, v in r.items() if k not in ("hash", "hash_anterior")}, anterior
+        )
+        assert r["hash_anterior"] == anterior and r["hash"] == esperado
+        anterior = r["hash"]
+    filtrados = [
+        r for r in registros if auditoria._passa_no_filtro(r, None, None, operacao)
+    ]
+    saida = [f"# total_linhas: {len(filtrados)}\n", auditoria._linha_csv(auditoria.COLUNAS)]
+    for r in filtrados:
+        saida.append(
+            auditoria._linha_csv(
+                [auditoria._proteger(r.get(c)) for c in auditoria.COLUNAS]
+            )
+        )
+    Path(destino).write_text("".join(saida))
+
+
+def exportar_linha_a_linha(destino, operacao):
+    with open(destino, "w") as f:
+        for parte in auditoria.exportar_csv(operacao=operacao):
+            f.write(parte)
+
+
+def medir_memoria(modo, caminho_log, destino, operacao):
+    """Roda em um processo só dele, para o pico de memória não se misturar."""
+    auditoria.caminho = lambda: Path(caminho_log)
+    antes = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    inicio = time.perf_counter()
+    if modo == "inteiro":
+        exportar_tudo_na_memoria(destino, operacao)
+    else:
+        exportar_linha_a_linha(destino, operacao)
+    tempo = time.perf_counter() - inicio
+    total = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    pico = total - antes
+    # impressão digital das linhas de dados, para provar que os dois geram o mesmo CSV
+    sha = hashlib.sha256()
+    with open(destino) as f:
+        for linha in f:
+            if not linha.startswith("#"):
+                sha.update(linha.encode())
+    print(json.dumps({"tempo": tempo, "pico_mb": pico / 1024, "total_mb": total / 1024, "sha": sha.hexdigest()}))
+
+
+def rodar_memoria(modo, original, pasta, operacao):
+    trabalho = Path(pasta) / "copia.jsonl"
+    shutil.copyfile(original, trabalho)  # cada rodada começa com o mesmo log
+    saida = subprocess.run(
+        [sys.executable, __file__, "_memoria", modo, str(trabalho),
+         str(Path(pasta) / "saida.csv"), operacao or "-"],
+        capture_output=True, text=True, check=True,
+    )
+    return json.loads(saida.stdout.strip().splitlines()[-1])
+
+
+def experimento_memoria():
+    pasta = tempfile.mkdtemp(prefix="medicao-export-")
+    original = Path(pasta) / "log.jsonl"
+    try:
+        print("| linhas | log (MB) | filtro | jeito | memória extra (MB) | memória total (MB) | tempo (s) |")
+        print("|---:|---:|---|---|---:|---:|---:|")
+        for linhas in TAMANHOS_LOG:
+            gerar_log_grande(original, linhas)
+            tamanho = original.stat().st_size / 1024 / 1024
+            filtros = [None, "assinar"] if linhas == TAMANHOS_LOG[-1] else [None]
+            for operacao in filtros:
+                resultados = {}
+                for modo in ("inteiro", "linha"):
+                    resultados[modo] = rodar_memoria(modo, original, pasta, operacao)
+                    r = resultados[modo]
+                    nome = "arquivo inteiro" if modo == "inteiro" else "linha a linha"
+                    print(
+                        f"| {linhas:,} | {tamanho:.0f} | {operacao or 'nenhum'} | {nome} "
+                        f"| {r['pico_mb']:.1f} | {r['total_mb']:.1f} | {r['tempo']:.1f} |"
+                    )
+                assert resultados["inteiro"]["sha"] == resultados["linha"]["sha"], (
+                    "os dois jeitos geraram CSVs diferentes"
+                )
+        print("\nOs dois jeitos geraram exatamente as mesmas linhas de dados.")
+    finally:
+        shutil.rmtree(pasta, ignore_errors=True)
+
+def receptor_alertas():
+    """Destino de mentira dos alertas: só imprime o que recebe. Ctrl+C desliga."""
+
+    class Receptor(BaseHTTPRequestHandler):
+        def do_POST(self):
+            corpo = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            print(f"ALERTA RECEBIDO: {corpo.decode()}", flush=True)
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass  # sem o barulho padrão do servidor
+
+    print(f"Receptor em http://0.0.0.0:{PORTA_RECEPTOR}  (Ctrl+C para desligar)", flush=True)
+    HTTPServer(("0.0.0.0", PORTA_RECEPTOR), Receptor).serve_forever()
+
 EXPERIMENTOS = {
     "hsm": experimento_hsm,
     "workers": experimento_workers,
     "cofres": experimento_cofres,
+    "memoria": experimento_memoria,
+    "receptor": receptor_alertas,
 }
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 4 and sys.argv[1] == "_cenario":
+    if len(sys.argv) == 6 and sys.argv[1] == "_memoria":
+        medir_memoria(
+            sys.argv[2], sys.argv[3], sys.argv[4],
+            None if sys.argv[5] == "-" else sys.argv[5],
+        )
+    elif len(sys.argv) == 4 and sys.argv[1] == "_cenario":
         cenario_cofres(sys.argv[2], sys.argv[3].split(","))
     elif len(sys.argv) == 2 and sys.argv[1] in EXPERIMENTOS:
         EXPERIMENTOS[sys.argv[1]]()
     else:
-        print("Uso: python src/experimentos.py hsm | workers | cofres")
+        print("Uso: python src/experimentos.py hsm | workers | cofres | memoria | receptor")
         sys.exit(1)
