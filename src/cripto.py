@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.asymmetric import ed25519, padding, rsa
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM, ChaCha20Poly1305
 
 PASTA_CHAVES = Path("/app/chaves")
 
@@ -95,3 +95,72 @@ def decifrar(nome: str, iv: bytes, cifrado: bytes) -> str:
     aesgcm = AESGCM(chave)
 
     return aesgcm.decrypt(iv, cifrado, None).decode()
+
+
+def _gravar_sem_sobrescrever(caminho: Path, conteudo: bytes) -> None:
+    with open(caminho, "xb") as arquivo:
+        arquivo.write(conteudo)
+
+
+def gerar_chave_chacha(nome: str) -> None:
+    chave = ChaCha20Poly1305.generate_key()
+    _gravar_sem_sobrescrever(PASTA_CHAVES / f"{nome}_chacha.bin", chave)
+
+
+def cifrar_chacha(nome: str, texto: str) -> tuple[bytes, bytes]:
+    chave = (PASTA_CHAVES / f"{nome}_chacha.bin").read_bytes()
+    chacha = ChaCha20Poly1305(chave)
+
+    nonce = os.urandom(12)
+    cifrado = chacha.encrypt(nonce, texto.encode(), None)
+
+    return nonce, cifrado
+
+
+def decifrar_chacha(nome: str, nonce: bytes, cifrado: bytes) -> str:
+    chave = (PASTA_CHAVES / f"{nome}_chacha.bin").read_bytes()
+    chacha = ChaCha20Poly1305(chave)
+
+    return chacha.decrypt(nonce, cifrado, None).decode()
+
+
+def gerar_par_ed25519(nome: str) -> str:
+    caminho_privada = PASTA_CHAVES / f"{nome}_ed25519_privada.pem"
+    caminho_publica = PASTA_CHAVES / f"{nome}_ed25519_publica.pem"
+    if caminho_privada.exists() or caminho_publica.exists():
+        raise FileExistsError(nome)
+
+    chave_privada = ed25519.Ed25519PrivateKey.generate()
+
+    pem_privada = chave_privada.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    _gravar_sem_sobrescrever(caminho_privada, pem_privada)
+
+    pem_publica = chave_privada.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    _gravar_sem_sobrescrever(caminho_publica, pem_publica)
+
+    return pem_publica.decode()
+
+
+def assinar_ed25519(nome: str, texto: str) -> bytes:
+    pem = (PASTA_CHAVES / f"{nome}_ed25519_privada.pem").read_bytes()
+    chave_privada = serialization.load_pem_private_key(pem, password=None)
+
+    return chave_privada.sign(texto.encode())
+
+
+def verificar_ed25519(nome: str, texto: str, assinatura: bytes) -> bool:
+    pem = (PASTA_CHAVES / f"{nome}_ed25519_publica.pem").read_bytes()
+    chave_publica = serialization.load_pem_public_key(pem)
+
+    try:
+        chave_publica.verify(assinatura, texto.encode())
+        return True
+    except InvalidSignature:
+        return False

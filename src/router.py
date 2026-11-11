@@ -1,8 +1,10 @@
 import base64
 import binascii
+from datetime import date
 
 from cryptography.exceptions import InvalidTag
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pkcs11.exceptions import NoSuchKey, NoSuchToken
 
 import auditoria
@@ -31,7 +33,7 @@ TRAVA_CRIACAO = TravaDeArquivo("criacao")
 def verificar_limite():
     em_uso = metricas.chaves_em_uso()
     limite = metricas.LIMITE_CHAVES
-
+    
     if em_uso >= limite:
         raise HTTPException(
             status_code=409,
@@ -61,18 +63,18 @@ def _chave_ja_existe(nome: str) -> HTTPException:
         status_code=409,
         detail=f"Já existe uma chave com o nome '{nome}'. Escolha outro nome.",
     )
+
+
 @router.get("/cofre/status")
 def cofre_status():
     with hsm.sessao_hsm() as sessao:
         return {"token": sessao.token.label}
-
 
 @router.post("/assinar")
 def assinar_texto(dados: AssinarEntrada):
     with auditoria.auditar("assinar", dados.nome):
         assinatura = cripto.assinar(dados.nome, dados.texto)
     return {"assinatura": base64.b64encode(assinatura).decode()}
-
 
 @router.post("/chaves/rsa")
 def criar_chave_rsa(dados: NomeEntrada):
@@ -82,14 +84,12 @@ def criar_chave_rsa(dados: NomeEntrada):
             publica = cripto.gerar_par_de_chaves(dados.nome)
     return {"chave_publica": publica}
 
-
 @router.post("/verificar")
 def verificar_assinatura(dados: VerificarEntrada):
     assinatura = base64.b64decode(dados.assinatura)
     with auditoria.auditar("verificar", dados.nome):
         valida = cripto.verificar(dados.nome, dados.texto, assinatura)
     return {"valida": valida}
-
 
 @router.post("/chaves/aes")
 def criar_chave_aes(dados: NomeEntrada):
@@ -99,16 +99,14 @@ def criar_chave_aes(dados: NomeEntrada):
             cripto.gerar_chave_aes(dados.nome)
     return {"mensagem": "chave AES criada"}
 
-
 @router.post("/cifrar")
 def cifrar_texto(dados: CifrarEntrada):
     with auditoria.auditar("cifrar", dados.nome):
         iv, cifrado = cripto.cifrar(dados.nome, dados.texto)
     return {
         "iv": base64.b64encode(iv).decode(),
-        "cifrado": base64.b64encode(cifrado).decode(),
+        "cifrado": base64.b64encode(cifrado).decode()
     }
-
 
 @router.post("/decifrar")
 def decifrar_texto(dados: DecifrarEntrada):
@@ -118,7 +116,6 @@ def decifrar_texto(dados: DecifrarEntrada):
         texto = cripto.decifrar(dados.nome, iv, cifrado)
     return {"texto": texto}
 
-
 @router.post("/cofre/chaves/rsa")
 def criar_chave_rsa_no_cofre(dados: NomeEntrada):
     with auditoria.auditar("cofre_criar_chave_rsa", dados.nome):
@@ -126,7 +123,6 @@ def criar_chave_rsa_no_cofre(dados: NomeEntrada):
             verificar_limite()
             publica = hsm.gerar_par_no_cofre(dados.nome)
     return {"chave_publica": base64.b64encode(publica).decode()}
-
 
 @router.post("/cofre/assinar")
 def assinar_texto_no_cofre(dados: AssinarEntrada):
@@ -140,14 +136,12 @@ def assinar_texto_no_cofre(dados: AssinarEntrada):
             )
     return {"assinatura": base64.b64encode(assinatura).decode()}
 
-
 @router.post("/cofre/verificar")
 def verificar_assinatura_no_cofre(dados: VerificarEntrada):
     assinatura = base64.b64decode(dados.assinatura)
     with auditoria.auditar("cofre_verificar", dados.nome):
         valida = hsm.verificar_no_cofre(dados.nome, dados.texto, assinatura)
     return {"valida": valida}
-
 
 @router.post("/cofre/chaves/aes")
 def criar_chave_aes_no_cofre(dados: NomeEntrada):
@@ -157,16 +151,14 @@ def criar_chave_aes_no_cofre(dados: NomeEntrada):
             hsm.gerar_chave_aes_no_cofre(dados.nome)
     return {"mensagem": "chaves AES criadas no cofre"}
 
-
 @router.post("/cofre/cifrar")
 def cifrar_texto_no_cofre(dados: CifrarEntrada):
     with auditoria.auditar("cofre_cifrar", dados.nome):
         iv, cifrado = hsm.cifrar_no_cofre(dados.nome, dados.texto)
     return {
         "iv": base64.b64encode(iv).decode(),
-        "cifrado": base64.b64encode(cifrado).decode(),
+        "cifrado": base64.b64encode(cifrado).decode()
     }
-
 
 @router.post("/cofre/decifrar")
 def decifrar_texto_no_cofre(dados: DecifrarEntrada):
@@ -217,6 +209,7 @@ def decifrar_texto_chacha(dados: DecifrarSeguroEntrada):
             ) from None
     return {"texto": texto}
 
+
 @router.post("/chaves/ed25519")
 def criar_chave_ed25519(dados: NomeSeguroEntrada):
     with auditoria.auditar("criar_chave_ed25519", dados.nome):
@@ -248,6 +241,7 @@ def verificar_assinatura_ed25519(dados: VerificarSeguroEntrada):
         except FileNotFoundError:
             raise _chave_nao_encontrada(dados.nome) from None
     return {"valida": valida}
+
 
 @router.post("/cofre/chaves/ec")
 def criar_chave_ec_no_cofre(dados: NomeSeguroEntrada):
@@ -281,11 +275,10 @@ def verificar_assinatura_ec_no_cofre(dados: VerificarSeguroEntrada):
             raise _chave_nao_encontrada(dados.nome) from None
     return {"valida": valida}
 
-    
+
 @router.get("/cofre/chaves")
 def listar_chaves():
     return {"chaves": hsm.listar_chaves()}
-
 
 @router.get("/monitoramento", response_model=schemas.MonitoramentoSaida)
 def monitoramento():
@@ -319,4 +312,18 @@ def monitoramento():
         "limite_chaves": metricas.LIMITE_CHAVES,
         "chaves_em_uso": chaves_em_uso,
         "cofre_disponivel": cofre_disponivel,
+
     }
+
+@router.get("/auditoria/exportar")
+def exportar_auditoria(
+    de: date | None = None, ate: date | None = None, operacao: str | None = None
+):
+    if de and ate and de > ate:
+        raise HTTPException(status_code=422, detail="'de' não pode ser depois de 'ate'")
+    nome = f"auditoria_{de or 'inicio'}_{ate or 'fim'}.csv"
+    return StreamingResponse(
+        auditoria.exportar_csv(de, ate, operacao),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{nome}"'},
+    )

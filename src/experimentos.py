@@ -12,6 +12,8 @@ import auditoria
 import cripto
 import hsm
 import metricas
+import pkcs11
+from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass
 
 LABEL = "medicao-hsm"
 OPERACOES = 30
@@ -21,6 +23,11 @@ PORTA = 8100
 URL = f"http://127.0.0.1:{PORTA}"
 PEDIDOS = 40
 VAGAS = 5
+
+TOKENS_TESTE = ["teste-seg-1", "teste-seg-2"]
+RODADAS_SEG = 20
+OPERACOES_SEG = 40
+TEMPO_MAXIMO = 60
 
 
 def assinar_varias(vezes):
@@ -131,11 +138,112 @@ def experimento_workers():
     testar_workers("2 workers, travas de arquivo", {})
 
 
-EXPERIMENTOS = {"hsm": experimento_hsm, "workers": experimento_workers}
+def criar_tokens_teste():
+    for nome in TOKENS_TESTE:
+        subprocess.run(
+            ["softhsm2-util", "--init-token", "--free", "--label", nome,
+             "--so-pin", "1234", "--pin", hsm.PIN],
+            check=True, capture_output=True, timeout=30,
+        )
+
+
+def apagar_tokens_teste():
+    for nome in TOKENS_TESTE:
+        try:
+            subprocess.run(
+                ["softhsm2-util", "--delete-token", "--token", nome],
+                capture_output=True, timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            print(f"(não consegui apagar o cofre {nome}: travou)")
+
+
+def cenario_cofres(modo, tokens):
+    biblioteca = pkcs11.lib(hsm.CAMINHO_BIBLIOTECA)
+    fila = threading.RLock()
+
+    def abrir(nome):
+        return biblioteca.get_token(token_label=nome).open(user_pin=hsm.PIN, rw=True)
+
+    def assinar(nome):
+        with abrir(nome) as sessao:
+            chave = sessao.get_key(object_class=ObjectClass.PRIVATE_KEY, label="seg")
+            chave.sign(b"x", mechanism=Mechanism.SHA256_RSA_PKCS)
+
+    def trabalho(nome):
+        for _ in range(OPERACOES_SEG):
+            if modo == "com_fila":
+                with fila:
+                    assinar(nome)
+            else:
+                assinar(nome)
+
+    for nome in set(tokens):
+        with abrir(nome) as sessao:
+            sessao.generate_keypair(
+                KeyType.RSA, 2048, store=True, label="seg",
+                private_template={Attribute.TOKEN: True, Attribute.PRIVATE: True,
+                                  Attribute.SENSITIVE: True, Attribute.SIGN: True,
+                                  Attribute.LABEL: "seg"},
+                public_template={Attribute.TOKEN: True, Attribute.VERIFY: True,
+                                 Attribute.LABEL: "seg"},
+            )
+    threads = [threading.Thread(target=trabalho, args=(nome,)) for nome in tokens]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+
+def rodar_cenario(titulo, modo, tokens):
+    resultados = collections.Counter()
+    print(f"{titulo:<34}: ", end="", flush=True)
+    for _ in range(RODADAS_SEG):
+        apagar_tokens_teste()
+        criar_tokens_teste()
+        try:
+            proc = subprocess.run(
+                [sys.executable, __file__, "_cenario", modo, ",".join(tokens)],
+                capture_output=True, timeout=TEMPO_MAXIMO,
+            )
+        except subprocess.TimeoutExpired:
+            resultados["travou"] += 1
+            print("T", end="", flush=True)
+            continue
+        if proc.returncode == 0:
+            resultados["ok"] += 1
+            print(".", end="", flush=True)
+        elif proc.returncode < 0:
+            resultados["Segmentation fault"] += 1
+            print("X", end="", flush=True)
+        else:
+            resultados["outro erro"] += 1
+            print("?", end="", flush=True)
+    print(f" {dict(resultados)}")
+
+
+def experimento_cofres():
+    t1, t2 = TOKENS_TESTE
+    try:
+        rodar_cenario("mesmo cofre, sem fila", "sem_fila", [t1, t1])
+        rodar_cenario("cofres diferentes, sem fila", "sem_fila", [t1, t2])
+        rodar_cenario("cofres diferentes, com fila", "com_fila", [t1, t2])
+    finally:
+        apagar_tokens_teste()
+
+
+EXPERIMENTOS = {
+    "hsm": experimento_hsm,
+    "workers": experimento_workers,
+    "cofres": experimento_cofres,
+}
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in EXPERIMENTOS:
-        print("Uso: python src/experimentos.py hsm | workers")
+    if len(sys.argv) == 4 and sys.argv[1] == "_cenario":
+        cenario_cofres(sys.argv[2], sys.argv[3].split(","))
+    elif len(sys.argv) == 2 and sys.argv[1] in EXPERIMENTOS:
+        EXPERIMENTOS[sys.argv[1]]()
+    else:
+        print("Uso: python src/experimentos.py hsm | workers | cofres")
         sys.exit(1)
-    EXPERIMENTOS[sys.argv[1]]()

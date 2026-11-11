@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from typing import Annotated
+
+from pydantic import BaseModel, Field
 
 
 class NomeEntrada(BaseModel):
@@ -35,4 +37,26 @@ class MonitoramentoSaida(BaseModel):
     chaves_do_cofre: dict | None = None
     chaves_em_uso: int | None = None
     cofre_disponivel: bool
-    
+
+
+NomeSeguro = Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+
+
+class NomeSeguroEntrada(NomeEntrada):
+    nome: NomeSeguro
+
+
+class CifrarSeguroEntrada(CifrarEntrada):
+    nome: NomeSeguro
+
+
+class DecifrarSeguroEntrada(DecifrarEntrada):
+    nome: NomeSeguro
+
+
+class AssinarSeguroEntrada(AssinarEntrada):
+    nome: NomeSeguro
+
+
+class VerificarSeguroEntrada(VerificarEntrada):
+    nome: NomeSeguro
