@@ -33,4 +33,13 @@ def sessao_hsm_limpa():
     hsm.fechar_sessao()
     yield
     hsm.fechar_sessao()
-    
+
+@pytest.fixture(autouse=True)
+def alertas_isoladas(tmp_path, monkeypatch):
+    import alertas
+
+    monkeypatch.setattr(alertas, "caminho_estado", lambda: tmp_path / "alerta_estado.json")
+    monkeypatch.setattr(alertas, "ALERTA_URL", "")
+    monkeypatch.setattr(alertas, "ESPERA_INICIAL", 0)
+    yield
+    alertas.esperar_envios()
